@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>LiFi Brightness Torch</title>
+  <style>
+    * { margin:0; padding:0; }
+    body { background:#000; color:#fff; font-family:Arial; text-align:center; overflow:hidden; }
+    #torch { position:fixed; top:0; left:0; width:100vw; height:100vh; background:#000; transition:background 0.05s; z-index:9999; }
+    .on { background:#fff !important; }
+    .container { padding:15px; position:relative; z-index:10; }
+    input { width:100%; padding:14px; font-size:1.3em; margin:10px 0; border-radius:12px; border:none; }
+    button { width:100%; padding:18px; font-size:1.5em; background:#0d6efd; color:white; border:none; border-radius:12px; margin:10px 0; }
+    .status { margin:15px 0; font-weight:bold; font-size:1.2em; }
+    .code { background:#111; color:#0f0; padding:12px; border-radius:10px; margin:15px 0; font-size:0.85em; white-space:pre-wrap; word-wrap:break-word; }
+    .copy { background:#333; color:#0f0; padding:8px; border-radius:8px; margin-top:8px; font-size:0.9em; }
+  </style>
+</head>
+<body>
+
+<div id="torch"></div>
+
+<div class="container">
+  <h2>LiFi Brightness Torch</h2>
+  <p><strong>Chennai | 08:26 PM</strong></p>
+  <input type="text" id="msg" placeholder="Type any message..." />
+  <button onclick="send()">SEND via Full Brightness</button>
+  <p class="status" id="status">Status: Ready</p>
+
+  <div class="code" id="arduino">
+#include &lt;LiquidCrystal.h&gt;
+LiquidCrystal lcd(2,3,4,5,6,7);
+#define LDR_PIN 8
+String buf = ""; bool recv = false;
+
+void setup() {
+  Serial.begin(9600); pinMode(LDR_PIN, INPUT);
+  lcd.begin(16,2); lcd.print("LiFi Ready"); delay(2000);
+  lcd.clear(); lcd.print("Point Phone"); lcd.setCursor(0,1); lcd.print("to LDR...");
+}
+
+void loop() {
+  int l = digitalRead(LDR_PIN);
+  if (!recv && l == HIGH) { recv = true; buf = ""; lcd.clear(); lcd.print("Receiving..."); delay(200); }
+  if (recv) {
+    while (l == HIGH) { delay(200); l = digitalRead(LDR_PIN); }
+    buf += l ? "1" : "0";
+    if (buf.length() >= 8) {
+      String b = buf.substring(0,8); buf = buf.substring(8);
+      char c = (char)strtol(b.c_str(), NULL, 2);
+      if (c == 0) { lcd.clear(); lcd.print("Done!"); }
+      else if (c >= 32 && c <= 126) { printLCD(c); }
+    }
+  }
+  if (buf.length() > 0 && buf.length() < 8) { resetLCD(); }
+}
+
+void printLCD(char c) {
+  static String l1="", l2="";
+  if (l1.length() < 16) l1 += c;
+  else if (l2.length() < 16) l2 += c;
+  else { l1 = l1.substring(1) + l2[0]; l2 = l2.substring(1) + c; }
+  lcd.clear(); lcd.setCursor(0,0); lcd.print(l1);
+  lcd.setCursor(0,1); lcd.print(l2);
+}
+
+void resetLCD() {
+  lcd.clear(); lcd.print("Point Phone");
+  lcd.setCursor(0,1); lcd.print("to LDR..."); recv = false;
+}
+  </div>
+  <button class="copy" onclick="copyCode()">Copy Arduino Code</button>
+</div>
+
+<script>
+// Force max brightness
+if ('wakeLock' in navigator) {
+  let wakeLock;
+  async function requestWakeLock() {
+    try { wakeLock = await navigator.wakeLock.request('screen'); } catch(err) {}
+  }
+  requestWakeLock();
+}
+
+// Full brightness torch
+const torch = document.getElementById("torch");
+const status = document.getElementById("status");
+
+function send() {
+  const msg = document.getElementById("msg").value.trim();
+  if (!msg) { status.textContent = "Type a message!"; return; }
+
+  const full = msg + "*/";
+  let bits = "";
+  for (let c of full) {
+    let code = c.charCodeAt(0);
+    for (let i = 7; i >= 0; i--) bits += (code >> i) & 1 ? "1" : "0";
+  }
+
+  status.textContent = "Sending...";
+  let i = 0;
+
+  // Start pulse
+  torch.classList.add("on");
+  setTimeout(() => {
+    torch.classList.remove("on");
+    setTimeout(() => transmit(i, bits), 200);
+  }, 200);
+}
+
+function transmit(i, bits) {
+  if (i >= bits.length) {
+    torch.classList.remove("on");
+    status.textContent = "Sent!";
+    return;
+  }
+  if (bits[i] === "1") torch.classList.add("on");
+  else torch.classList.remove("on");
+  setTimeout(() => transmit(i + 1, bits), 200);
+}
+
+function copyCode() {
+  navigator.clipboard.writeText(document.getElementById("arduino").textContent);
+  alert("Arduino code copied!");
+}
+</script>
+
+</body>
+</html>
